@@ -39,8 +39,19 @@ jobs:
 
           unzip -q "$ZIP_FILE" -d android-project
 
-          echo "Extracted files:"
-          find android-project -maxdepth 4 -type f
+          echo "Project files:"
+          find android-project -maxdepth 3 -type f
+
+      - name: Fix AndroidX configuration
+        shell: bash
+        run: |
+          set -e
+
+          echo "android.useAndroidX=true" > android-project/gradle.properties
+          echo "android.enableJetifier=true" >> android-project/gradle.properties
+
+          echo "gradle.properties:"
+          cat android-project/gradle.properties
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
@@ -66,10 +77,11 @@ jobs:
 
           cd android-project
 
-          echo "Gradle project:"
-          ls -la
+          echo "Starting Gradle build..."
 
-          gradle --no-daemon assembleDebug --stacktrace
+          gradle --no-daemon \
+            --stacktrace \
+            assembleDebug
 
       - name: Find APK
         shell: bash
