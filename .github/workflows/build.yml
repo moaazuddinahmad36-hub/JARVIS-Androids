@@ -11,10 +11,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Unpack Android project
+      - name: Find and unpack JARVIS ZIP
         run: |
+          ZIP=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
+          echo "Using ZIP: $ZIP"
           mkdir project
-          unzip -q JARVIS-Android-V2-GitHub-Ready.zip -d project
+          unzip -q "$ZIP" -d project
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -25,7 +27,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK packages
+      - name: Install Android SDK
         run: |
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
@@ -34,8 +36,9 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build debug APK
-        run: gradle -p project :app:assembleDebug --no-daemon
+      - name: Build APK
+        run: |
+          gradle -p project :app:assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
