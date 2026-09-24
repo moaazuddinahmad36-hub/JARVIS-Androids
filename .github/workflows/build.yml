@@ -11,37 +11,49 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Find and unpack JARVIS ZIP
-        run: |
-          ZIP=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
-          echo "Using ZIP: $ZIP"
-          mkdir project
-          unzip -q "$ZIP" -d project
-
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK
+      - name: Find and unpack JARVIS ZIP
         run: |
+          ZIP=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1)
+          echo "ZIP=$ZIP"
+
+          mkdir -p jarvis-project
+          unzip -o "$ZIP" -d jarvis-project
+
+          echo "Project files:"
+          find jarvis-project -maxdepth 3 -type f | head -100
+
+      - name: Set Android SDK
+        run: |
+          yes | sdkmanager --licenses || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
+      - name: Find Gradle project
+        run: |
+          GRADLEW=$(find jarvis-project -type f -name "gradlew" | head -n 1)
+
+          if [ -z "$GRADLEW" ]; then
+            echo "gradlew नहीं मिला"
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$GRADLEW")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+          chmod +x "$GRADLEW"
 
       - name: Build APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          gradle -p project :app:assembleDebug --no-daemon
+          ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: JARVIS-debug-APK
-          path: project/app/build/outputs/apk/debug/app-debug.apk
+          path: '**/build/outputs/apk/**/*.apk'
