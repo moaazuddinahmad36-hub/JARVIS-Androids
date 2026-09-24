@@ -32,26 +32,42 @@ jobs:
             exit 1
           fi
 
-          echo "Using ZIP: $ZIP_FILE"
-
           rm -rf android-project
           mkdir -p android-project
 
           unzip -q "$ZIP_FILE" -d android-project
 
-          echo "Project files:"
-          find android-project -maxdepth 3 -type f
+          echo "JARVIS project extracted."
 
-      - name: Fix AndroidX configuration
+      - name: Fix AndroidX and JVM configuration
         shell: bash
         run: |
           set -e
 
-          echo "android.useAndroidX=true" > android-project/gradle.properties
-          echo "android.enableJetifier=true" >> android-project/gradle.properties
+          cat > android-project/gradle.properties <<'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=true
+          kotlin.jvm.target.validation.mode=error
+          EOF
 
-          echo "gradle.properties:"
-          cat android-project/gradle.properties
+          cat >> android-project/app/build.gradle.kts <<'EOF'
+
+          // JARVIS GitHub Actions JVM compatibility fix
+          android {
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          }
+
+          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+          }
+          EOF
+
+          echo "JVM configuration fixed."
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
@@ -74,19 +90,15 @@ jobs:
         shell: bash
         run: |
           set -e
-
           cd android-project
 
-          echo "Starting Gradle build..."
-
-          gradle --no-daemon \
-            --stacktrace \
-            assembleDebug
+          echo "Building JARVIS APK..."
+          gradle --no-daemon --stacktrace assembleDebug
 
       - name: Find APK
         shell: bash
         run: |
-          echo "Searching for APK..."
+          echo "APK files:"
           find android-project -type f -name "*.apk" -print
 
       - name: Upload APK
