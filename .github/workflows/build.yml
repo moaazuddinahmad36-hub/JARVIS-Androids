@@ -17,40 +17,42 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Find and unpack JARVIS ZIP
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Install Android packages
+        run: |
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
+
+      - name: Find JARVIS ZIP
         run: |
           ZIP=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1)
-          echo "ZIP=$ZIP"
-
+          echo "Found: $ZIP"
           mkdir -p jarvis-project
           unzip -o "$ZIP" -d jarvis-project
-
-          echo "Project files:"
-          find jarvis-project -maxdepth 3 -type f | head -100
-
-      - name: Set Android SDK
-        run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Find Gradle project
         run: |
           GRADLEW=$(find jarvis-project -type f -name "gradlew" | head -n 1)
 
           if [ -z "$GRADLEW" ]; then
-            echo "gradlew नहीं मिला"
+            echo "ERROR: gradlew नहीं मिला"
+            find jarvis-project -maxdepth 3 -type f
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$GRADLEW")
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
           chmod +x "$GRADLEW"
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
