@@ -2,13 +2,17 @@ name: Build JARVIS APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Java
@@ -17,45 +21,81 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android licenses
-        run: yes | sdkmanager --licenses || true
-
-      - name: Install Android packages
+      - name: Find and unpack JARVIS ZIP
+        shell: bash
         run: |
-          sdkmanager "platform-tools"
+          set -e
+
+          ZIP_FILE=$(find . -type f -iname "*JARVIS*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "JARVIS ZIP file not found!"
+            exit 1
+          fi
+
+          echo "Found ZIP: $ZIP_FILE"
+
+          mkdir -p android-project
+          unzip -q "$ZIP_FILE" -d android-project
+
+          echo "Project extracted successfully."
+          find android-project -maxdepth 3 -type f | head -100
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses || true
           sdkmanager "platforms;android-35"
           sdkmanager "build-tools;35.0.0"
-
-      - name: Find JARVIS ZIP
-        run: |
-          ZIP=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1)
-          echo "Found: $ZIP"
-          mkdir -p jarvis-project
-          unzip -o "$ZIP" -d jarvis-project
+          sdkmanager "platform-tools"
 
       - name: Find Gradle project
+        shell: bash
         run: |
-          GRADLEW=$(find jarvis-project -type f -name "gradlew" | head -n 1)
+          set -e
+
+          GRADLEW=$(find android-project -type f -name "gradlew" | head -n 1)
 
           if [ -z "$GRADLEW" ]; then
-            echo "ERROR: gradlew नहीं मिला"
-            find jarvis-project -maxdepth 3 -type f
+            echo "gradlew not found!"
+            echo "Files inside project:"
+            find android-project -maxdepth 5 -type f
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$GRADLEW")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          chmod +x "$GRADLEW"
 
-      - name: Build APK
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: ./gradlew assembleDebug --stacktrace
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+          echo "Gradle project found at:"
+          echo "$PROJECT_DIR"
+
+      - name: Make Gradle executable
+        shell: bash
+        run: |
+          chmod +x "$PROJECT_DIR/gradlew"
+
+      - name: Build Debug APK
+        shell: bash
+        run: |
+          cd "$PROJECT_DIR"
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Find APK
+        shell: bash
+        run: |
+          echo "APK files:"
+          find "$PROJECT_DIR" -type f -name "*.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: JARVIS-debug-APK
-          path: '**/build/outputs/apk/**/*.apk'
+          path: |
+            ${{ env.PROJECT_DIR }}/**/build/outputs/apk/**/*.apk
+          if-no-files-found: error
