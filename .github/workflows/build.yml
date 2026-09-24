@@ -24,6 +24,7 @@ jobs:
         shell: bash
         run: |
           set -e
+
           ZIP_FILE=$(find . -type f -iname "*JARVIS*.zip" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
@@ -36,6 +37,53 @@ jobs:
           unzip -q "$ZIP_FILE" -d android-project
 
           echo "JARVIS project extracted."
+
+      - name: Fix JARVIS source code
+        shell: bash
+        run: |
+          set -e
+
+          MAIN_FILE=$(find android-project -type f -name "MainActivity.kt" | head -n 1)
+
+          if [ -z "$MAIN_FILE" ]; then
+            echo "MainActivity.kt NOT FOUND"
+            exit 1
+          fi
+
+          echo "Found: $MAIN_FILE"
+
+          python3 - "$MAIN_FILE" <<'PY'
+          import sys
+
+          path = sys.argv[1]
+
+          with open(path, "r", encoding="utf-8") as f:
+              s = f.read()
+
+          old1 = "val x = cx + p.x * base * heartbeat * motion"
+          old2 = "val y = cy + p.y * base * heartbeat * motion"
+
+          new1 = "val x = (cx.toDouble() + p.x.toDouble() * base.toDouble() * heartbeat.toDouble() * motion.toDouble()).toFloat()"
+          new2 = "val y = (cy.toDouble() + p.y.toDouble() * base.toDouble() * heartbeat.toDouble() * motion.toDouble()).toFloat()"
+
+          if old1 not in s:
+              print("WARNING: x line was not found")
+          else:
+              s = s.replace(old1, new1)
+
+          if old2 not in s:
+              print("WARNING: y line was not found")
+          else:
+              s = s.replace(old2, new2)
+
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(s)
+
+          print("Source code fix applied.")
+          PY
+
+          echo "Checking fixed lines:"
+          grep -n "val x =\|val y =" "$MAIN_FILE" | tail -n 5
 
       - name: Fix AndroidX and JVM configuration
         shell: bash
@@ -50,7 +98,6 @@ jobs:
 
           cat >> android-project/app/build.gradle.kts <<'EOF'
 
-          // JARVIS GitHub Actions JVM compatibility fix
           android {
               compileOptions {
                   sourceCompatibility = JavaVersion.VERSION_17
@@ -64,34 +111,6 @@ jobs:
               }
           }
           EOF
-
-      - name: Show MainActivity error area
-        shell: bash
-        run: |
-          echo "========================================"
-          echo "SEARCHING FOR MainActivity.kt"
-          echo "========================================"
-
-          find android-project -type f -name "MainActivity.kt" -print
-
-          MAIN_FILE=$(find android-project -type f -name "MainActivity.kt" | head -n 1)
-
-          if [ -z "$MAIN_FILE" ]; then
-            echo "MainActivity.kt NOT FOUND"
-            exit 1
-          fi
-
-          echo ""
-          echo "========================================"
-          echo "MainActivity.kt lines 410-425"
-          echo "========================================"
-
-          nl -ba "$MAIN_FILE" | sed -n '410,425p'
-
-          echo ""
-          echo "========================================"
-          echo "END OF CODE SECTION"
-          echo "========================================"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
@@ -115,7 +134,9 @@ jobs:
         run: |
           set -e
           cd android-project
+
           echo "Building JARVIS APK..."
+
           gradle --no-daemon --stacktrace assembleDebug
 
       - name: Find APK
