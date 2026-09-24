@@ -38,6 +38,58 @@ jobs:
 
           echo "JARVIS project extracted."
 
+      - name: Insert Gemini API key
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        shell: bash
+        run: |
+          set -e
+
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "GEMINI_API_KEY secret is missing!"
+            exit 1
+          fi
+
+          python3 <<'PY'
+          import os
+
+          root = "android-project/app/src"
+          key = os.environ["GEMINI_API_KEY"]
+
+          replacements = 0
+
+          for dirpath, _, filenames in os.walk(root):
+              for filename in filenames:
+                  if not filename.endswith((".kt", ".java", ".xml")):
+                      continue
+
+                  path = os.path.join(dirpath, filename)
+
+                  try:
+                      with open(path, "r", encoding="utf-8") as f:
+                          text = f.read()
+                  except Exception:
+                      continue
+
+                  old = text
+
+                  text = text.replace(
+                      "PUT_YOUR_GEMINI_API_KEY_HERE",
+                      key
+                  )
+
+                  if text != old:
+                      with open(path, "w", encoding="utf-8") as f:
+                          f.write(text)
+                      replacements += 1
+                      print("Updated:", path)
+
+          print("API key placeholder replacements:", replacements)
+
+          if replacements == 0:
+              print("WARNING: API key placeholder was not found.")
+          PY
+
       - name: Fix JARVIS source code
         shell: bash
         run: |
@@ -49,8 +101,6 @@ jobs:
             echo "MainActivity.kt NOT FOUND"
             exit 1
           fi
-
-          echo "Found: $MAIN_FILE"
 
           python3 - "$MAIN_FILE" <<'PY'
           import sys
@@ -66,24 +116,14 @@ jobs:
           new1 = "val x = (cx.toDouble() + p.x.toDouble() * base.toDouble() * heartbeat.toDouble() * motion.toDouble()).toFloat()"
           new2 = "val y = (cy.toDouble() + p.y.toDouble() * base.toDouble() * heartbeat.toDouble() * motion.toDouble()).toFloat()"
 
-          if old1 not in s:
-              print("WARNING: x line was not found")
-          else:
-              s = s.replace(old1, new1)
-
-          if old2 not in s:
-              print("WARNING: y line was not found")
-          else:
-              s = s.replace(old2, new2)
+          s = s.replace(old1, new1)
+          s = s.replace(old2, new2)
 
           with open(path, "w", encoding="utf-8") as f:
               f.write(s)
 
-          print("Source code fix applied.")
+          print("JARVIS source compatibility fix applied.")
           PY
-
-          echo "Checking fixed lines:"
-          grep -n "val x =\|val y =" "$MAIN_FILE" | tail -n 5
 
       - name: Fix AndroidX and JVM configuration
         shell: bash
@@ -134,15 +174,11 @@ jobs:
         run: |
           set -e
           cd android-project
-
-          echo "Building JARVIS APK..."
-
           gradle --no-daemon --stacktrace assembleDebug
 
       - name: Find APK
         shell: bash
         run: |
-          echo "APK files:"
           find android-project -type f -name "*.apk" -print
 
       - name: Upload APK
