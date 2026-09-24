@@ -90,6 +90,84 @@ jobs:
               print("WARNING: API key placeholder was not found.")
           PY
 
+      - name: Diagnose Gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        shell: bash
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "       TESTING GEMINI API KEY"
+          echo "======================================"
+
+          HTTP=$(curl -sS -o /tmp/gemini.json -w "%{http_code}" \
+            -H "x-goog-api-key: $GEMINI_API_KEY" \
+            "https://generativelanguage.googleapis.com/v1beta/models")
+
+          echo "Gemini API HTTP status: $HTTP"
+
+          python3 - <<'PY'
+          import re
+
+          p = "/tmp/gemini.json"
+
+          with open(p, encoding="utf-8") as f:
+              s = f.read()
+
+          s = re.sub(
+              r'AIza[0-9A-Za-z_-]+',
+              '[REDACTED_KEY]',
+              s
+          )
+
+          print(s[:5000])
+          PY
+
+          echo ""
+          echo "======================================"
+          echo "       INTERNET PERMISSION"
+          echo "======================================"
+
+          grep -n "android.permission.INTERNET" \
+            android-project/app/src/main/AndroidManifest.xml || true
+
+          echo ""
+          echo "======================================"
+          echo "       GEMINI SOURCE"
+          echo "======================================"
+
+          MAIN_FILE=$(find android-project -type f -name "MainActivity.kt" | head -n 1)
+
+          if [ -z "$MAIN_FILE" ]; then
+            echo "MainActivity.kt NOT FOUND"
+            exit 1
+          fi
+
+          python3 - "$MAIN_FILE" <<'PY'
+          import sys
+          import re
+
+          p = sys.argv[1]
+
+          with open(p, encoding="utf-8") as f:
+              s = f.read()
+
+          s = re.sub(
+              r'AIza[0-9A-Za-z_-]+',
+              '[REDACTED_KEY]',
+              s
+          )
+
+          for i, line in enumerate(s.splitlines(), 1):
+              if re.search(
+                  r'gemini|generativelanguage|generateContent|models/',
+                  line,
+                  re.I
+              ):
+                  print(f"{i}: {line}")
+          PY
+
       - name: Fix JARVIS source code
         shell: bash
         run: |
